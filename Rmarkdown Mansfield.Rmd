@@ -1,0 +1,226 @@
+---
+title: "Austen sentiment analysis"
+author: "Sofie Thinggaard"
+date: 'created on 17 November 2021 and updated `r format(Sys.time(), "%d %B, %Y")`'
+output: html_document
+---
+
+### Installing packages
+```{r Installing packages}
+#install.packages("tidyverse")
+library(tidyverse)
+#dir.create("data")
+#Austen_MP <- read_csv("data/Austen_MP.csv")
+#install.packages("readr")
+library(readr)
+#install.packages("gutenbergr")
+library(gutenbergr)
+Austen_gut <- gutenberg_download(141)
+library(magrittr)
+
+Austen_gut <- Austen_gut %>% 
+  mutate(linenumber= row_number())
+
+write.csv(Austen_gut, "C:/Users/sofie/Desktop/gutenberg_Mansfield.csv")
+
+
+```
+
+### Defining afinn
+```{r Defining afinn}
+#install.packages("textdata")
+library(tidytext)
+#install.packages("tidyr")
+library(tidyr)
+
+afinn <- get_sentiments("afinn")
+
+```
+
+### Separating the sentences with women from men
+```{r Separating the sentences with women from men}
+Austen_women <- Austen_gut %>%
+  filter(str_detect(text, "\\bshe\\b") | str_detect(text, "\\bher\\b")) %>%
+  filter(!str_detect(text, "\\bhe\\b" ) & !str_detect(text, "\\bhim\\b"))
+```
+
+### Women overall afinn sentiment
+```{r Women overall afinn sentiment}
+Austen_women %>% 
+  unnest_tokens(word,text) %>% inner_join(afinn) %>% summarise(sentiment=sum(value))
+```
+
+### Median and mean women afinn
+```{r Median and mean women afinn}
+women_summary_afinn <- Austen_women %>% 
+  unnest_tokens(word,text) %>% inner_join(afinn) %>%
+  summarise(
+    mean_score = mean(value),
+    median_score = median(value)
+  )
+```
+
+### Seeing which words afinn scored
+```{r Seeing which words afinn scored}
+Austen_sentiment <- Austen_women %>% 
+  unnest_tokens(word,text) %>% inner_join(afinn, by = "word")
+```
+
+### Which words does afinn not score: finding the words that are in Austen_women but not austen_sentiment
+```{r Which words does afinn not score: finding the words that are in Austen_women but not austen_sentiment}
+Austen_words <- Austen_women %>% 
+  unnest_tokens(word,text) %>% 
+  select(word) %>% 
+  setdiff(Austen_sentiment %>% select(word))
+```
+
+### Removing stop words and finding adjectives
+```{r Removing stop words and finding adjectives}
+Austen_adjectives <- Austen_words %>% 
+  anti_join(stop_words) %>% 
+  left_join(parts_of_speech) %>% 
+  filter(pos == "Adjective")
+
+write.csv(Austen_adjectives, "C:/Users/sofie/Desktop/Austen.csv")
+
+```
+
+### Doing the same for the men: seperating men from women
+```{r Doing the same for the men: seperating men from women}
+Austen_men <- Austen_gut %>%
+  filter(str_detect(text, "\\bhe\\b") | str_detect(text, "\\bhim\\b")) %>%
+  filter(!str_detect(text, "\\bshe\\b") & !str_detect(text, "\\bher\\b"))
+```
+
+### Men overall afinn sentiment
+```{r Men overall afinn sentiment}
+Austen_men %>% 
+  unnest_tokens(word,text) %>% inner_join(afinn) %>% summarise(sentiment=sum(value))
+
+```
+
+### Seeing which words afinn scored for men
+```{r Seeing which words afinn scored for men}
+Austen_sentiment_men <- Austen_men %>% 
+  unnest_tokens(word,text) %>% inner_join(afinn)
+```
+
+### Median and mean men afinn
+```{r Median and mean men afinn}
+men_summary_afinn <- Austen_men %>% 
+  unnest_tokens(word,text) %>% inner_join(afinn) %>%
+  summarise(
+    mean_score = mean(value),
+    median_score = median(value)
+  )
+```
+
+### Plot progession graph with afinn: women
+```{r Plot progession graph with afinn: women}
+chapter_graph <- Austen_sentiment %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "afinn")
+
+chapter_graph %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+### Plot progession graph with afinn: men
+```{r Plot progession graph with afinn: men}
+chapter_graph_men <- Austen_sentiment_men %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "afinn")
+
+chapter_graph_men %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+
+```
+
+### Sentiments with bing both women and men
+```{r Sentiments with bing both women and men}
+bing <- get_sentiments("bing")
+
+women_sentiment_bing <- Austen_women %>% 
+  unnest_tokens(word,text) %>% inner_join(bing)
+
+men_sentiment_bing <- Austen_men %>% 
+  unnest_tokens(word,text) %>% inner_join(bing)
+
+```
+
+### Wordcloud using bing sentiments: women
+```{r Wordcloud using bing sentiments: women}
+#install.packages("reshape2")
+#install.packages("wordcloud")
+library(wordcloud)
+
+library(reshape2)
+
+wordcloud_women <- women_sentiment_bing %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray80", "pink"),
+                   max.words = 100)
+
+```
+
+### Wordcloud using bing sentiments: men
+```{r Wordcloud using bing sentiments: men}
+wordcloud_men <- men_sentiment_bing %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray80", "blue"),
+                   max.words = 100)
+
+```
+
+### GGplots using bing sentiments: women
+```{r GGplots using bing sentiments: women}
+women_sentiment_bing %>% 
+   count(word, sentiment, sort = TRUE) %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10) %>% 
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "frequency",
+       y = "word")
+#add mutate to get in order of highest frequency to lowest instead of random order
+
+```
+
+### GGplots using bing sentiments: men
+```{r GGplots using bing sentiments: men}
+men_sentiment_bing %>% 
+   count(word, sentiment, sort = TRUE) %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10) %>% 
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "frequency",
+       y = "word")
+```
+
+### Men overall bing sentiment
+```{r Men overall bing sentiment}
+men_sentiment_bing %>% 
+count(sentiment)
+```
+
+### Women overall bing sentiment
+```{r Women overall bing sentiment}
+women_sentiment_bing %>% 
+count(sentiment)
+```
+
